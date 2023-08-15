@@ -2,6 +2,15 @@ const User = require("../models/user");
 const express = require("express");
 const playlistsRouter = express.Router();
 const Playlist = require("../models/playlist");
+const jwt = require("jsonwebtoken");
+
+const extractTokenFromRequest = (request) => {
+  const authHeader = request.get("authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.replace("Bearer ", "");
+  }
+  return null;
+};
 
 playlistsRouter.get("/", async (request, response) => {
   const playlists = await Playlist.find({}).populate("user", {
@@ -12,8 +21,17 @@ playlistsRouter.get("/", async (request, response) => {
 });
 
 playlistsRouter.post("/", async (request, response) => {
-  const { name, creator, numOfSongs, likes, userId } = request.body;
-  const user = await User.findById(userId);
+  const { name, creator, numOfSongs, likes } = request.body;
+
+  const tokenPayload = jwt.verify(
+    extractTokenFromRequest(request),
+    process.env.PRIVATE_KEY
+  );
+  if (!tokenPayload.id) {
+    return response.status(401).json({ error: "invalid token" });
+  }
+  // Find the user with the id in the token payload
+  const user = await User.findById(tokenPayload.id);
   if (!user) {
     return response.status(404).json({ error: "user not found" });
   }
