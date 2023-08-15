@@ -5,6 +5,10 @@ const playlistSchema = new mongoose.Schema({
   creator: { type: String, required: true, minLength: 2 },
   numOfSongs: Number,
   likes: Number,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
 });
 
 playlistSchema.set("toJSON", {
