@@ -4,14 +4,6 @@ const playlistsRouter = express.Router();
 const Playlist = require("../models/playlist");
 const jwt = require("jsonwebtoken");
 
-const extractTokenFromRequest = (request) => {
-  const authHeader = request.get("authorization");
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    return authHeader.replace("Bearer ", "");
-  }
-  return null;
-};
-
 playlistsRouter.get("/", async (request, response) => {
   const playlists = await Playlist.find({}).populate("user", {
     username: 1,
@@ -23,15 +15,11 @@ playlistsRouter.get("/", async (request, response) => {
 playlistsRouter.post("/", async (request, response) => {
   const { name, creator, numOfSongs, likes } = request.body;
 
-  const tokenPayload = jwt.verify(
-    extractTokenFromRequest(request),
-    process.env.PRIVATE_KEY
-  );
+  const tokenPayload = jwt.verify(request.token, process.env.PRIVATE_KEY);
   if (!tokenPayload.id) {
     return response.status(401).json({ error: "invalid token" });
   }
-  // Find the user with the id in the token payload
-  const user = await User.findById(tokenPayload.id);
+  const user = request.user;
   if (!user) {
     return response.status(404).json({ error: "user not found" });
   }
@@ -49,27 +37,32 @@ playlistsRouter.post("/", async (request, response) => {
 });
 
 playlistsRouter.delete("/:id", async (request, response) => {
-  const user = await User.findById(request.body.userId);
+  const playlist = await Playlist.findById(request.params.id);
+  if (!playlist) {
+    return response.status(404).json({ error: "Playlist not found" });
+  }
+  const tokenPayload = jwt.verify(request.token, process.env.PRIVATE_KEY);
+  if (!tokenPayload.id) {
+    return response.status(401).json({ error: "invalid token" });
+  }
+  const user = request.user;
   if (!user) {
     return response.status(404).json({ error: "user not found" });
   }
-  const ownerCheck = (await Playlist.findById(request.params.id)).user;
-  if (request.body.userId !== ownerCheck.toString()) {
+  // Check if the owner requested the deletion
+  if (tokenPayload.id !== playlist.user.toString()) {
     return response.status(401).json({ error: "unauthorized access" });
   }
-  const playlist = await Playlist.findByIdAndRemove(request.params.id);
-  if (playlist) {
-    response.status(200).json({
-      message: `The playlist [${playlist.name}] removed successfully`,
-    });
 
-    user.playlists = user.playlists.filter(
-      (playlist) => playlist._id.toString() !== request.params.id
-    );
-    user.save();
-  } else {
-    response.status(404).json({ error: "The playlist not found." });
-  }
+  const removedPlaylist = await Playlist.findByIdAndRemove(request.params.id);
+  user.playlists = user.playlists.filter(
+    (playlist) => playlist._id.toString() !== request.params.id
+  );
+  user.save();
+
+  response.status(200).json({
+    message: `The playlist [${removedPlaylist.name}] removed successfully`,
+  });
 });
 
 playlistsRouter.put("/:id", async (request, response) => {
